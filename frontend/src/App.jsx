@@ -1,122 +1,126 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useState } from 'react';
+import { getTickets, getStats, createTicket, updateTicket } from './api';
+import { STATUSES, STATUS_LABELS } from './constants';
+import StatsBar from './components/StatsBar';
+import TicketForm from './components/TicketForm';
+import TicketList from './components/TicketList';
 
-function App() {
-  const [count, setCount] = useState(0)
+const LIMIT = 10;
+
+export default function App() {
+  const [tickets, setTickets] = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [list, statsData] = await Promise.all([
+        getTickets({ status: statusFilter, page, limit: LIMIT }),
+        getStats(),
+      ]);
+
+      // If the current page became empty (e.g. last ticket moved out of the filter), step back
+      if (list.data.length === 0 && page > 1) {
+        setPage(Math.max(list.pagination.totalPages, 1));
+        return;
+      }
+
+      setTickets(list.data);
+      setPagination(list.pagination);
+      setStats(statsData);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, page]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleCreate = async (ticket) => {
+    await createTicket(ticket);
+    // Jump to page 1 so the new ticket is visible (newest first)
+    if (page !== 1) setPage(1);
+    else await loadData();
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      await updateTicket(id, { status });
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleFilterChange = (value) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="container">
+      <h1>Support Tickets</h1>
+
+      <StatsBar stats={stats} />
+
+      <TicketForm onCreate={handleCreate} />
+
+      <section className="card">
+        <div className="list-header">
+          <h2>Tickets</h2>
+          <label>
+            Status{' '}
+            <select
+              value={statusFilter}
+              onChange={(e) => handleFilterChange(e.target.value)}
+            >
+              <option value="">All</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+
+        {error && <p className="error">{error}</p>}
+
+        <TicketList
+          tickets={tickets}
+          loading={loading}
+          onStatusChange={handleStatusChange}
+        />
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="pagination">
+            <button
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page <= 1 || loading}
+            >
+              Previous
+            </button>
+            <span>
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= pagination.totalPages || loading}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    </div>
+  );
 }
-
-export default App
